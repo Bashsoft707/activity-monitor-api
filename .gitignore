@@ -1,0 +1,18 @@
+node_modules
+
+# Keep environment variables out of version control
+.env
+
+# Build output
+dist
+
+# Prisma Client is generated at build time (see the "build" script)
+/src/generated
+
+# AI tooling — Prisma vendors its docs here via `prisma init`; not project code
+.agents
+.claude
+.windsurf
+skills-lock.json
+
+.DS_Store
