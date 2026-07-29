@@ -2,17 +2,19 @@ import { createServer } from 'node:http'
 import { createApp } from './app.js'
 import { env } from './env.js'
 import { prisma } from './lib/prisma.js'
-import { createDispatcher, type RealtimePublisher } from './notifications/dispatch.js'
+import { createDispatcher } from './notifications/dispatch.js'
+import { createRealtime } from './realtime/socket.js'
 
-// Placeholder transport: reports zero recipients because nothing is attached yet.
-// The Socket.io implementation replaces this in the next commit.
-const publish: RealtimePublisher = () => 0
+// Order matters here. The realtime layer hands out stable broadcast/publish
+// functions up front, so the dispatcher and the app can be built before any
+// server exists. Socket.io then attaches last — engine.io takes over the
+// server's 'request' handling when it attaches, so the Express app has to
+// already be registered or handshakes get answered twice.
+const realtime = createRealtime()
+const dispatch = createDispatcher(realtime.publish)
 
-const dispatch = createDispatcher(publish)
-
-// Socket.io (added next) attaches to this http.Server, so the server — not the
-// Express app — is what gets listened on.
-const httpServer = createServer(createApp({ dispatch }))
+const httpServer = createServer(createApp({ broadcast: realtime.broadcast, dispatch }))
+realtime.attach(httpServer)
 
 httpServer.listen(env.port, () => {
   console.log(`API listening on port ${env.port}`)
@@ -20,7 +22,8 @@ httpServer.listen(env.port, () => {
 
 const shutdown = async (signal: string): Promise<void> => {
   console.log(`${signal} received, closing server`)
-  httpServer.close()
+  // Closing Socket.io also closes the http.Server it is attached to.
+  await realtime.close()
   await prisma.$disconnect()
   process.exit(0)
 }

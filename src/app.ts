@@ -2,10 +2,14 @@ import cors from 'cors'
 import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
 import { env } from './env.js'
+import type { EventDTO } from './lib/serialize.js'
 import type { Dispatcher } from './notifications/dispatch.js'
 import { createEventsRouter } from './routes/events.js'
 
 export type AppDeps = {
+  /** Sends every created event to the live feed. */
+  broadcast: (event: EventDTO) => void
+  /** Applies the notification policy for a single event. */
   dispatch: Dispatcher
 }
 
@@ -16,7 +20,7 @@ export type AppDeps = {
  * The dispatcher is injected rather than imported so the routes stay independent
  * of which realtime transport is attached.
  */
-export const createApp = ({ dispatch }: AppDeps) => {
+export const createApp = ({ broadcast, dispatch }: AppDeps) => {
   const app = express()
 
   app.use(cors({ origin: env.corsOrigins }))
@@ -26,7 +30,7 @@ export const createApp = ({ dispatch }: AppDeps) => {
     res.json({ status: 'ok', uptime: process.uptime() })
   })
 
-  app.use('/events', createEventsRouter({ dispatch }))
+  app.use('/events', createEventsRouter({ broadcast, dispatch }))
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: 'Not found' })

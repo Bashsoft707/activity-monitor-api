@@ -2,9 +2,14 @@ import { Router } from 'express'
 import type { Prisma } from '../generated/prisma/client.js'
 import { EventType } from '../generated/prisma/enums.js'
 import { prisma } from '../lib/prisma.js'
-import { serializeEvent } from '../lib/serialize.js'
+import { serializeEvent, type EventDTO } from '../lib/serialize.js'
 import { resolveChannel } from '../notifications/channel-router.js'
 import type { Dispatcher } from '../notifications/dispatch.js'
+
+type EventsRouterDeps = {
+  broadcast: (event: EventDTO) => void
+  dispatch: Dispatcher
+}
 
 /**
  * How many events the feed loads up front. The socket stream carries everything
@@ -67,7 +72,7 @@ const parseCreateEvent = (body: unknown): ParseResult => {
   }
 }
 
-export const createEventsRouter = ({ dispatch }: { dispatch: Dispatcher }): Router => {
+export const createEventsRouter = ({ broadcast, dispatch }: EventsRouterDeps): Router => {
   const router = Router()
 
   router.get('/', async (_req, res) => {
@@ -105,8 +110,13 @@ export const createEventsRouter = ({ dispatch }: { dispatch: Dispatcher }): Rout
 
     const event = serializeEvent(created)
 
-    // Write first, notify second: a failed insert must never produce a
-    // notification for an event that does not exist.
+    // Write first, then push: a failed insert must never produce a notification
+    // for an event that does not exist.
+    //
+    // The feed gets every event; the notification only fires on whichever channel
+    // the router picked. Broadcasting first means the monitor stays current even
+    // if a notification provider later fails.
+    broadcast(event)
     const notification = dispatch(event)
 
     res.status(201).json({ data: event, notification })
