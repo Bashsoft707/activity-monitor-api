@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
@@ -12,4 +10,37 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+/// What happened. Kept as an enum so the notification router can switch on it
+/// exhaustively — adding a value here forces a compile error until it is routed.
+enum EventType {
+  USER_SIGNUP
+  PAYMENT_RECEIVED
+  PAYMENT_FAILED
+  LOGIN_FAILED
+  ORDER_SHIPPED
+  SUBSCRIPTION_EXPIRING
+}
+
+/// Delivery channel chosen by the notification router. Only IN_APP is actually
+/// dispatched; SMS and WHATSAPP are stubbed and log their intent.
+enum NotificationChannel {
+  IN_APP
+  SMS
+  WHATSAPP
+}
+
+/// Append-only audit log. One row per logged activity, broadcast to connected
+/// clients over Socket.io as it is written.
+model Event {
+  id        String              @id @default(uuid(7)) @db.Uuid
+  type      EventType
+  label     String
+  channel   NotificationChannel
+  metadata  Json?
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@map("events")
 }
