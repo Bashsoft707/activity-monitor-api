@@ -2,13 +2,21 @@ import cors from 'cors'
 import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
 import { env } from './env.js'
-import { eventsRouter } from './routes/events.js'
+import type { Dispatcher } from './notifications/dispatch.js'
+import { createEventsRouter } from './routes/events.js'
+
+export type AppDeps = {
+  dispatch: Dispatcher
+}
 
 /**
  * Builds the Express app. Kept separate from the server so `index.ts` can wrap it
  * in a Node http.Server — Socket.io has to attach to that server, not to the app.
+ *
+ * The dispatcher is injected rather than imported so the routes stay independent
+ * of which realtime transport is attached.
  */
-export const createApp = () => {
+export const createApp = ({ dispatch }: AppDeps) => {
   const app = express()
 
   app.use(cors({ origin: env.corsOrigins }))
@@ -18,7 +26,7 @@ export const createApp = () => {
     res.json({ status: 'ok', uptime: process.uptime() })
   })
 
-  app.use('/events', eventsRouter)
+  app.use('/events', createEventsRouter({ dispatch }))
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: 'Not found' })
