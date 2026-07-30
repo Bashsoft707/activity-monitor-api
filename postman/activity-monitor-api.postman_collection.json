@@ -1,0 +1,324 @@
+{
+  "info": {
+    "name": "Activity Monitor API",
+    "description": "Real-time activity monitor backend — Express + Socket.io + Prisma + PostgreSQL.\n\nSet the `baseUrl` collection variable to switch between local and deployed:\n- local: http://localhost:4000\n- Railway: https://<your-service>.up.railway.app\n\nNote that `channel` is never accepted in a request body. The server derives it from `type` and stores its own decision, so a client cannot choose its delivery route.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 200', () => pm.response.to.have.status(200));",
+                  "pm.test('reports ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Liveness probe. Touches no database, so it stays green even if Postgres is unreachable — useful for telling an app-down from a database-down."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Events",
+      "item": [
+        {
+          "name": "List events",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 200', () => pm.response.to.have.status(200));",
+                  "pm.test('returns a data array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["events"]
+            },
+            "description": "The 50 most recent events, newest first.\n\nOrdered by `created_at` and then `id`. Multiple events can be written in the same millisecond, so ordering on the timestamp alone would let them swap positions between requests. `id` is a UUIDv7 and sorts in the same direction as the timestamp, which settles ties deterministically."
+          },
+          "response": []
+        },
+        {
+          "name": "Create event — routes to IN_APP (delivered)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('routed to IN_APP', () => pm.expect(body.data.channel).to.eql('IN_APP'));",
+                  "pm.test('actually delivered', () => pm.expect(body.notification.delivered).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"USER_SIGNUP\",\n  \"label\": \"New signup: ada@example.com\",\n  \"metadata\": {\n    \"recipient\": \"ada@example.com\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["events"]
+            },
+            "description": "Informational event. The router sends it to IN_APP, which is the one channel actually wired up, so `notification.delivered` is true and `detail` reports how many socket clients received it.\n\nOpen the frontend (or any socket client) before sending this to watch it arrive live on both `event:created` and `notification:push`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create event — routes to SMS (stubbed)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('routed to SMS', () => pm.expect(body.data.channel).to.eql('SMS'));",
+                  "pm.test('reported as not delivered', () => pm.expect(body.notification.delivered).to.be.false);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PAYMENT_FAILED\",\n  \"label\": \"Card declined for invoice #1042\",\n  \"metadata\": {\n    \"recipient\": \"+2348000000000\",\n    \"amountKobo\": 250000\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["events"]
+            },
+            "description": "Revenue-critical event, so the router sends it to SMS. SMS is stubbed: the server logs the message it would have sent and returns `delivered: false`.\n\nThis event still appears on the socket's `event:created` feed — it is a logged event — but not on `notification:push`, which carries IN_APP only."
+          },
+          "response": []
+        },
+        {
+          "name": "Create event — routes to WHATSAPP (stubbed)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 201', () => pm.response.to.have.status(201));",
+                  "pm.test('routed to WHATSAPP', () => pm.expect(pm.response.json().data.channel).to.eql('WHATSAPP'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"ORDER_SHIPPED\",\n  \"label\": \"Order #8821 shipped via GIG Logistics\",\n  \"metadata\": {\n    \"recipient\": \"+2348000000000\",\n    \"trackingId\": \"GIG-8821\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["events"]
+            },
+            "description": "Rich-content update that should arrive today but does not justify SMS rates, so the router picks WhatsApp. Also stubbed."
+          },
+          "response": []
+        },
+        {
+          "name": "Create event — client cannot choose the channel",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 201', () => pm.response.to.have.status(201));",
+                  "pm.test('client-supplied channel is ignored', () => pm.expect(pm.response.json().data.channel).to.eql('SMS'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PAYMENT_FAILED\",\n  \"label\": \"Attempt to force a free channel\",\n  \"channel\": \"IN_APP\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["events"]
+            },
+            "description": "Sends `channel: IN_APP` alongside a PAYMENT_FAILED event. The stored channel is still SMS — the validator never reads `channel` from the body, so a caller cannot downgrade a fraud alert onto a free channel."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Validation and errors",
+      "item": [
+        {
+          "name": "Unknown event type → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 400', () => pm.response.to.have.status(400));",
+                  "pm.test('lists the valid types', () => pm.expect(pm.response.json().error).to.include('USER_SIGNUP'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"NOT_A_REAL_TYPE\",\n  \"label\": \"anything\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["events"]
+            },
+            "description": "The error echoes the full list of accepted types so a caller can correct the request without reading the source."
+          },
+          "response": []
+        },
+        {
+          "name": "Missing label → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('responds 400', () => pm.response.to.have.status(400));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"USER_SIGNUP\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["events"]
+            },
+            "description": "A whitespace-only label is rejected the same way."
+          },
+          "response": []
+        },
+        {
+          "name": "metadata is not an object → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('responds 400', () => pm.response.to.have.status(400));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"USER_SIGNUP\",\n  \"label\": \"metadata must be an object\",\n  \"metadata\": [1, 2, 3]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["events"]
+            },
+            "description": "Arrays and primitives are rejected. `metadata` maps to a jsonb column and is read defensively by the dispatchers, but the endpoint still refuses a shape that would be meaningless."
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown route → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 404', () => pm.response.to.have.status(404));",
+                  "pm.test('returns JSON not HTML', () => pm.expect(pm.response.json().error).to.eql('Not found'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/does-not-exist",
+              "host": ["{{baseUrl}}"],
+              "path": ["does-not-exist"]
+            },
+            "description": "Unmatched routes return JSON rather than Express's default HTML error page, so a client never has to parse markup to find out what went wrong."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
