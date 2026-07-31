@@ -1,7 +1,11 @@
 node_modules
 
-# Keep environment variables out of version control
+# Keep environment variables out of version control. The negations matter: the
+# .example files are documentation and are meant to be committed.
 .env
+.env.*
+!.env.example
+!.env.test.example
 
 # Build output
 dist

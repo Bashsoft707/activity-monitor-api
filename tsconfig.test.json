@@ -1,0 +1,12 @@
+{
+  // The build's tsconfig has rootDir ./src and emits to ./dist, so tests are
+  // deliberately outside it — test files must never land in the deployed output.
+  // This config type-checks them without emitting anything.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "tests/**/*", "vitest.config.ts"]
+}
