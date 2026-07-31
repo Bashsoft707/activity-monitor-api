@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Activity Monitor API",
-    "description": "Real-time activity monitor backend — Express + Socket.io + Prisma + PostgreSQL.\n\nSet the `baseUrl` collection variable to switch between local and deployed:\n- local: http://localhost:4000\n- Railway: https://<your-service>.up.railway.app\n\nNote that `channel` is never accepted in a request body. The server derives it from `type` and stores its own decision, so a client cannot choose its delivery route.",
+    "description": "Real-time activity monitor backend — Express + Socket.io + Prisma + PostgreSQL.\n\nSet the `baseUrl` collection variable to switch between local and deployed:\n- local: http://localhost:4000\n- deployed: https://<your-service>.onrender.com\n\nNote that `channel` is never accepted in a request body. The server derives it from `type` and stores its own decision, so a client cannot choose its delivery route.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

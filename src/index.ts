@@ -28,7 +28,8 @@ const shutdown = async (signal: string): Promise<void> => {
   process.exit(0)
 }
 
-// Railway sends SIGTERM on redeploy; closing the pool avoids leaking connections.
+// Container hosts send SIGTERM on redeploy and when idling a free instance down;
+// closing the pool avoids leaking connections.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     void shutdown(signal)

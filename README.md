@@ -4,18 +4,26 @@ Backend for a real-time activity monitor: an append-only event log in PostgreSQL
 pushed to connected clients over WebSockets as it is written, with a notification
 dispatch module that routes each event to a delivery channel.
 
-- **Live API:** _(Railway URL — pending deploy)_
+- **Live API:** _(Render URL — pending deploy)_
 - **Live frontend:** _(Vercel URL — pending deploy)_
 - **Repository:** https://github.com/Bashsoft707/activity-monitor-api
+
+> **A note on hosting.** The brief specifies Railway for the backend. Railway
+> discontinued its free tier and my trial credit has expired, so deploying there
+> now requires a paid plan. The API runs on **Render** instead — the same class of
+> platform, a persistent container rather than serverless, and a free tier that
+> keeps the demo link alive indefinitely. PostgreSQL is hosted on **Neon**. Nothing
+> in the code is platform-specific: the server reads `PORT` from the environment
+> and binds `0.0.0.0`, so moving it to Railway is a redeploy with no code changes.
 
 ## Architecture
 
 ```
-Next.js on Vercel  ──REST──▶  Express on Railway  ──▶  PostgreSQL
+Next.js on Vercel  ──REST──▶  Express on Render  ──▶  PostgreSQL on Neon
    (socket CLIENT)  ◀─WS───    (socket SERVER)
 ```
 
-The Socket.io **server** lives only inside the Express process on Railway. The
+The Socket.io **server** lives only inside the Express process on Render. The
 Next.js app is a Socket.io **client** and nothing more.
 
 This is deliberate. Vercel runs Next.js route handlers as serverless functions,
@@ -23,7 +31,7 @@ which are spun up per request and torn down afterwards — they cannot hold the
 long-lived TCP connection a WebSocket requires. Putting the socket server in a
 Next.js API route would appear to work locally, where `next dev` is one
 long-running process, and then fail in production once each request landed on a
-different short-lived function instance. Railway runs a persistent container, so
+different short-lived function instance. Render runs a persistent container, so
 that is where the server belongs.
 
 The frontend loads the initial feed over REST (`GET /events`) and receives every
@@ -39,7 +47,7 @@ so the client appends pushed events straight onto the list it fetched.
 | Realtime | Socket.io 4 |
 | Database | PostgreSQL |
 | ORM | Prisma 7 with the `@prisma/adapter-pg` driver adapter |
-| Hosting | Railway (API + Postgres) |
+| Hosting | Render (API), Neon (PostgreSQL), Vercel (frontend) |
 
 Prisma 7 no longer ships a query engine inside the client, so a driver adapter is
 required rather than optional — hence `@prisma/adapter-pg` and `pg`.
@@ -65,8 +73,8 @@ followed by `npm start`.
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
-| `DATABASE_URL` | yes | — | PostgreSQL connection string. On Railway, reference the Postgres service as `${{Postgres.DATABASE_URL}}`; from a laptop you must use the **public** proxy URL, since `*.railway.internal` only resolves inside Railway. |
-| `PORT` | no | `4000` | Railway injects this. Do not set it manually there. |
+| `DATABASE_URL` | yes | — | PostgreSQL connection string. The hosted database is Neon, so this is the same string locally and in production — paste it directly rather than referencing a managed addon. Neon requires TLS; keep `?sslmode=require`. |
+| `PORT` | no | `4000` | Render injects this. Do not set it manually there. |
 | `CORS_ORIGIN` | no | `http://localhost:3000` | Comma-separated allowlist of browser origins. Applied to both the REST layer and the Socket.io handshake. |
 
 The server fails fast on startup if `DATABASE_URL` is missing, rather than
@@ -90,9 +98,57 @@ surfacing it later as a confusing query error.
 `build` runs `prisma generate` because the generated client is gitignored — a
 deploy that only ran `tsc` would fail on an unresolvable import.
 
+## Deployment
+
+The API is a plain Node process that reads `PORT` from the environment and binds
+`0.0.0.0`, so any container host works. It runs on Render; see the hosting note at
+the top for why not Railway.
+
+**Render — new Web Service from this repository:**
+
+| Setting | Value |
+|---|---|
+| Build command | `npm install && npm run build` |
+| Start command | `npm start` |
+| Instance type | Free |
+
+Environment variables: `DATABASE_URL` (the Neon connection string, including
+`?sslmode=require`) and `CORS_ORIGIN` (the Vercel domain). **Leave `PORT` unset** —
+Render assigns it, and hardcoding it makes the health check fail.
+
+The database schema is applied separately, not during a deploy. Run
+`npm run migrate:deploy` against Neon once; to have deploys self-migrate, prepend
+it to the build command instead.
+
+Order matters when wiring the two halves together. Deploy the API first, point the
+frontend's `NEXT_PUBLIC_API_URL` at its domain, then come back and set
+`CORS_ORIGIN` to the Vercel domain and redeploy. Skipping that last step is the
+usual reason a deployment that works locally shows an empty feed in production: the
+browser blocks both the fetch and the socket handshake, and the failure only
+appears in the browser console.
+
+`CORS_ORIGIN` is an exact-match allowlist, so Vercel preview URLs are blocked
+unless added explicitly. Keep `http://localhost:3000` in the list alongside the
+production domain — it is comma-separated — so local development keeps working
+against the deployed API.
+
+### The free tier sleeps
+
+Render spins a free service down after 15 minutes without traffic, and the next
+request waits roughly a minute for it to wake. For a live dashboard that reads as
+broken: a visitor arrives, the API is asleep, and the feed shows its error state
+until the container is up.
+
+Pointing any uptime pinger (UptimeRobot, cron-job.org, a GitHub Actions cron) at
+`/health` every 10 minutes prevents it. `/health` touches no database, so the
+keep-warm traffic costs nothing but the wake-up. Render grants 750 instance hours
+per workspace per month against roughly 730 hours in a month, so exactly one
+always-on free service fits — which is all this needs, since Vercel hosts the
+frontend.
+
 ## API
 
-Base URL is the Railway domain in production, `http://localhost:4000` locally.
+Base URL is the Render domain in production, `http://localhost:4000` locally.
 
 ### `GET /health`
 
@@ -407,5 +463,5 @@ audit a policy you did not record.
 
 `postman/activity-monitor-api.postman_collection.json` covers every endpoint,
 including the validation failures. Import it and set the `baseUrl` collection
-variable — it defaults to `http://localhost:4000`; point it at the Railway domain
+variable — it defaults to `http://localhost:4000`; point it at the Render domain
 to exercise the deployed API.
