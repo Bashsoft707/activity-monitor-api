@@ -81,6 +81,10 @@ surfacing it later as a confusing query error.
 | `start` | `node dist/index.js` |
 | `migrate:dev` | Create and apply a new migration (development) |
 | `migrate:deploy` | Apply existing migrations (production) |
+| `migrate:test` | Apply migrations to the test database |
+| `test` | Run every suite once |
+| `test:watch` | Re-run affected suites on change |
+| `typecheck` | Type-check `src` and `tests` without emitting |
 | `studio` | Open Prisma Studio |
 
 `build` runs `prisma generate` because the generated client is gitignored — a
@@ -248,6 +252,61 @@ Every dispatch writes one line:
 [notify] event=019fadc8… type=PAYMENT_FAILED channel=SMS delivered=false :: stub: would send SMS to +2348000000000
 ```
 
+## Tests
+
+```bash
+npm test          # 66 tests
+npm run test:watch
+```
+
+Vitest, split into suites that need a database and suites that do not.
+
+| Suite | Kind | Covers |
+|---|---|---|
+| `tests/unit/channel-router.test.ts` | unit | Every event type routes to the expected channel, exhaustively |
+| `tests/unit/dispatch.test.ts` | unit | In-app publishes and reports delivery; SMS and WhatsApp log their intent and never touch the socket; recipient extraction from arbitrary metadata |
+| `tests/unit/serialize.test.ts` | unit | Wire shape, ISO timestamps, JSON round-trip fidelity |
+| `tests/integration/events.routes.test.ts` | integration | HTTP against a real database: persistence, server-side channel assignment, 13 validation rejections, feed ordering and the 50-row cap |
+| `tests/integration/realtime.test.ts` | integration | Real Socket.io server and real clients over a websocket |
+
+The realtime suite is the one worth reading. It assembles the production stack —
+`createRealtime()`, the dispatcher wired to it, the Express app, Socket.io
+attached in the same order as `index.ts` — binds it to an ephemeral port, and
+connects actual socket clients. Nothing is mocked, because the behaviour under
+test is the interaction: that a created event reaches the feed, that only an
+in-app event *also* reaches the push channel, that a broadcast reaches every
+connected client, and that the reported recipient count is real.
+
+Proving an event does **not** arrive needs a wait rather than an assertion, so
+`expectSilence` listens for a fixed window and fails if the event shows up. That
+is how the SMS and WhatsApp cases confirm they stay off `notification:push`.
+
+Two tests exist purely as regression guards for hazards documented in the source:
+that REST still works while a socket is attached (the engine.io attach-ordering
+trap in `realtime/socket.ts`), and that closing the realtime layer releases the
+port rather than leaking a listener.
+
+### Test database
+
+Integration tests truncate the events table between tests, so they need their own
+database — never the one holding data you care about.
+
+```bash
+cp .env.test.example .env.test   # then set DATABASE_URL
+npm run migrate:test             # apply the schema to it
+```
+
+Any PostgreSQL works: a local instance, a Docker container, or a second database
+on the same hosted provider. `tests/setup/test-env.ts` loads `.env.test` before
+any application module reads `DATABASE_URL`, which works because Vitest runs
+`setupFiles` first and `dotenv` does not overwrite variables that are already set.
+
+Without `.env.test` the unit suites still run and the integration suites skip with
+a message, so `npm test` is never blocked on having a database to hand.
+
+Tests live outside `src/`, so `tsc` never emits them into `dist`. `npm run
+typecheck` covers both using `tsconfig.test.json`.
+
 ## Project structure
 
 ```
@@ -265,6 +324,11 @@ src/
     dispatch.ts                channel dispatchers, in-app real / SMS + WhatsApp stubbed
   realtime/
     socket.ts                  Socket.io server, broadcast + push
+tests/
+  setup/test-env.ts            points the process at the test database
+  helpers/                     socket client helpers, DTO factory
+  unit/                        router, dispatcher, serializer
+  integration/                 HTTP against a real DB, real socket clients
 prisma/
   schema.prisma
   migrations/
