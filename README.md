@@ -4,9 +4,15 @@ Backend for a real-time activity monitor: an append-only event log in PostgreSQL
 pushed to connected clients over WebSockets as it is written, with a notification
 dispatch module that routes each event to a delivery channel.
 
-- **Live API:** _(Render URL — pending deploy)_
-- **Live frontend:** _(Vercel URL — pending deploy)_
+- **Live API:** https://activity-monitor-api.onrender.com — try
+  [`/health`](https://activity-monitor-api.onrender.com/health) or
+  [`/events`](https://activity-monitor-api.onrender.com/events)
+- **Live frontend:** https://activity-monitor-web.vercel.app
 - **Repository:** https://github.com/Bashsoft707/activity-monitor-api
+- **Frontend repository:** https://github.com/Bashsoft707/activity-monitor-web
+
+> The API runs on Render's free tier, which sleeps after 15 minutes without
+> traffic. If the first request hangs for up to a minute, it is waking up.
 
 > **A note on hosting.** The brief specifies Railway for the backend. Railway
 > discontinued its free tier and my trial credit has expired, so deploying there
